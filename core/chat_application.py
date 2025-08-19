@@ -9,6 +9,7 @@ import ctypes
 import sys
 import os
 from typing import List, Any
+from PIL import Image, ImageTk
 
 # 드래그 앤 드롭 라이브러리 임포트 시도
 try:
@@ -30,6 +31,239 @@ from ui.settings_dialog import SettingsDialog
 from utils.image_handler import ImageHandler
 from utils.file_handler import FileHandler
 from utils.conversation_manager import ConversationManager
+
+class ImagePreviewWindow:
+    """이미지 임시 미리보기 창"""
+    
+    def __init__(self, parent, config):
+        self.parent = parent
+        self.config = config
+        self.window = None
+        self.current_images = []
+        self.current_index = 0
+        self.preview_label = None
+        self.info_label = None
+        
+    def show_preview(self, image_handler, newly_added_index=None):
+        """미리보기 창 표시"""
+        print(f"DEBUG: show_preview 호출됨 - 모드: {image_handler.current_mode}, 이미지 수: {image_handler.get_image_count()}")
+        
+        if image_handler.current_mode == "multiple" and image_handler.get_image_count() > 0:
+            self.current_images = image_handler.images
+            self.current_index = newly_added_index if newly_added_index is not None else len(self.current_images) - 1
+            print(f"DEBUG: 다중 이미지 모드 - 현재 인덱스: {self.current_index}, 전체 이미지: {len(self.current_images)}")
+        elif image_handler.current_mode == "single" and image_handler.has_image():
+            # 단일 모드도 미리보기 창에서 표시하도록 변경
+            single_image_info = {
+                'path': image_handler.selected_image_path,
+                'image': image_handler.selected_image,
+                'filename': os.path.basename(image_handler.selected_image_path) if image_handler.selected_image_path else "단일이미지"
+            }
+            self.current_images = [single_image_info]
+            self.current_index = 0
+            print(f"DEBUG: 단일 이미지 모드 - 파일: {single_image_info['filename']}")
+        else:
+            print("DEBUG: 표시할 이미지가 없음")
+            return
+            
+        self.create_window()
+        # 창 생성 후 약간의 지연을 두고 이미지 업데이트
+        self.window.after(50, self.update_preview)
+        
+    def create_window(self):
+        """미리보기 창 생성"""
+        if self.window:
+            self.window.destroy()
+            
+        self.window = tk.Toplevel(self.parent)
+        self.window.title("이미지 미리보기")
+        self.window.configure(bg=self.config.THEME["bg_primary"])
+        
+        # 창 크기 및 위치 설정
+        window_width = 600
+        window_height = 500
+        
+        # 부모 창 중앙에 위치
+        parent_x = self.parent.winfo_rootx()
+        parent_y = self.parent.winfo_rooty()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        
+        x = parent_x + (parent_width // 2) - (window_width // 2)
+        y = parent_y + (parent_height // 2) - (window_height // 2)
+        
+        self.window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.window.resizable(True, True)  # 크기 조절 가능하게 변경
+        self.window.transient(self.parent)  # 항상 부모 창 위에
+        self.window.grab_set()  # 모달 창
+        self.window.lift()  # 창을 최상위로
+        self.window.attributes('-topmost', True)  # 항상 위에 표시
+        self.window.after(100, lambda: self.window.attributes('-topmost', False))  # 0.1초 후 해제
+        
+        # 상단 정보 바
+        info_frame = tk.Frame(self.window, bg=self.config.THEME["bg_secondary"], height=50)
+        info_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        info_frame.pack_propagate(False)
+        
+        self.info_label = tk.Label(
+            info_frame,
+            text="",
+            bg=self.config.THEME["bg_secondary"],
+            fg=self.config.THEME["fg_primary"],
+            font=("맑은 고딕", 12, "bold")
+        )
+        self.info_label.pack(expand=True)
+        
+        # 이미지 표시 영역
+        image_frame = tk.Frame(self.window, bg="#ffffff", relief=tk.SUNKEN, bd=2)
+        image_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        self.preview_label = tk.Label(
+            image_frame,
+            bg="#ffffff",
+            text="이미지를 불러오는 중...",
+            fg="#666666",
+            font=("맑은 고딕", 12)
+        )
+        self.preview_label.pack(expand=True, padx=10, pady=10)
+        
+        # 하단 버튼 영역
+        button_frame = tk.Frame(self.window, bg=self.config.THEME["bg_primary"])
+        button_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        
+        # 네비게이션 버튼들 (다중 이미지인 경우만)
+        if len(self.current_images) > 1:
+            nav_frame = tk.Frame(button_frame, bg=self.config.THEME["bg_primary"])
+            nav_frame.pack(side=tk.LEFT)
+            
+            prev_btn = tk.Button(
+                nav_frame,
+                text="◀ 이전",
+                command=self.prev_image,
+                font=("맑은 고딕", 10),
+                bg="#6366f1",
+                fg="#ffffff",
+                border=0,
+                padx=15, pady=8,
+                activebackground="#4f46e5",
+                relief=tk.FLAT,
+                cursor="hand2"
+            )
+            prev_btn.pack(side=tk.LEFT, padx=(0, 5))
+            
+            next_btn = tk.Button(
+                nav_frame,
+                text="다음 ▶",
+                command=self.next_image,
+                font=("맑은 고딕", 10),
+                bg="#6366f1",
+                fg="#ffffff",
+                border=0,
+                padx=15, pady=8,
+                activebackground="#4f46e5",
+                relief=tk.FLAT,
+                cursor="hand2"
+            )
+            next_btn.pack(side=tk.LEFT)
+        
+        # 닫기 버튼
+        close_btn = tk.Button(
+            button_frame,
+            text="✕ 닫기",
+            command=self.close_window,
+            font=("맑은 고딕", 10),
+            bg="#6b7280",
+            fg="#ffffff",
+            border=0,
+            padx=20, pady=8,
+            activebackground="#4b5563",
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        close_btn.pack(side=tk.RIGHT)
+        
+        # ESC 키로 닫기
+        self.window.bind('<Escape>', lambda e: self.close_window())
+        
+        # 포커스 설정
+        self.window.focus_set()
+        
+    def update_preview(self):
+        """현재 이미지 미리보기 업데이트"""
+        if not self.current_images or self.current_index >= len(self.current_images):
+            self.preview_label.config(image="", text="이미지가 없습니다.")
+            return
+            
+        current_image_info = self.current_images[self.current_index]
+        
+        # 정보 업데이트
+        if len(self.current_images) > 1:
+            info_text = f"이미지 {self.current_index + 1} / {len(self.current_images)} - {current_image_info['filename']}"
+        else:
+            info_text = f"이미지: {current_image_info['filename']}"
+        
+        if self.info_label:
+            self.info_label.config(text=info_text)
+        
+        # 이미지 미리보기 생성 (큰 크기)
+        try:
+            print(f"DEBUG: 이미지 미리보기 업데이트 시작 - {current_image_info['filename']}")
+            
+            # 원본 이미지가 있는지 확인
+            if 'image' not in current_image_info or current_image_info['image'] is None:
+                self.preview_label.config(image="", text="이미지 데이터가 없습니다.")
+                return
+            
+            # 이미지 복사 및 크기 조정
+            original_image = current_image_info['image']
+            display_image = original_image.copy()
+            
+            # 원본 크기 정보
+            orig_width, orig_height = display_image.size
+            print(f"DEBUG: 원본 이미지 크기: {orig_width}x{orig_height}")
+            
+            # 큰 미리보기 크기로 조정 (비율 유지)
+            max_width, max_height = 500, 350
+            display_image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            
+            new_width, new_height = display_image.size
+            print(f"DEBUG: 조정된 이미지 크기: {new_width}x{new_height}")
+            
+            # Tkinter PhotoImage로 변환
+            photo = ImageTk.PhotoImage(display_image)
+            
+            # 라벨에 이미지 설정
+            self.preview_label.config(image=photo, text="", compound='center')
+            self.preview_label.image = photo  # 참조 유지 (중요!)
+            
+            print(f"DEBUG: 이미지 미리보기 성공적으로 표시됨")
+            
+        except Exception as e:
+            error_msg = f"이미지 표시 오류: {str(e)}"
+            print(f"DEBUG: {error_msg}")
+            self.preview_label.config(image="", text=error_msg)
+    
+    def prev_image(self):
+        """이전 이미지"""
+        if self.current_index > 0:
+            self.current_index -= 1
+            self.update_preview()
+    
+    def next_image(self):
+        """다음 이미지"""
+        if self.current_index < len(self.current_images) - 1:
+            self.current_index += 1
+            self.update_preview()
+    
+    def close_window(self):
+        """창 닫기"""
+        if self.window:
+            self.window.destroy()
+            self.window = None
+    
+    def is_open(self):
+        """창이 열려있는지 확인"""
+        return self.window is not None and self.window.winfo_exists()
 
 class ChatApplication:
     """메인 채팅 애플리케이션 클래스"""
@@ -78,6 +312,9 @@ class ChatApplication:
         self.stop_button = None
         self.image_button = None
         self.image_preview_frame = None
+        
+        # 이미지 미리보기 창
+        self.preview_window = None
         
         self.setup_api_and_gui()
     
@@ -191,6 +428,9 @@ class ChatApplication:
         
         # 드래그 앤 드롭 힌트 표시 (환영 메시지 이후)
         self.root.after(1000, self.show_drag_drop_hint)
+        
+        # 호버 미리보기를 위한 변수
+        self.hover_preview_window = None
         
         self.input_text.focus()
     
@@ -368,24 +608,32 @@ class ChatApplication:
     def create_chat_area(self):
         """채팅 영역 생성"""
         self.chat_display = ChatDisplay(self.main_container, self.config)
+        
+        # 이미지 미리보기 영역 (채팅창 아래, 입력창 위에 배치)
+        self.image_preview_frame = tk.Frame(self.main_container, bg=self.config.THEME["bg_input"])
+        self.image_preview_frame.pack(fill=tk.X, padx=15, pady=(5, 0))  # 채팅 영역 뒤에 팩
+        self.image_preview_frame.config(height=90)  # 고정 높이 감소 (100 -> 90)
+        self.image_preview_frame.pack_propagate(False)  # 자식 위젯 크기에 의한 변경 방지
+        self.image_preview_frame.pack_forget()  # 초기에는 숨김
     
     def create_input_area(self):
         """입력 영역 생성"""
         # 입력 영역 - 더 모던한 디자인
-        input_container = tk.Frame(self.main_container, 
+        self.input_container = tk.Frame(self.main_container, 
                                  bg=self.config.THEME["bg_input"], 
                                  relief=tk.FLAT)
-        input_container.pack(fill=tk.X, pady=(15, 0))
+        self.input_container.pack(fill=tk.X, pady=(10, 0))  # 상단 여백 감소 (15 -> 10)
+        # pack_propagate 제거하여 자연스러운 크기 조정 허용
         
-        # 이미지 미리보기 영역
-        self.image_preview_frame = tk.Frame(input_container, bg=self.config.THEME["bg_input"])
+        # 이미지 미리보기 프레임은 create_chat_area()에서 생성됨
         
-        input_inner = tk.Frame(input_container, bg=self.config.THEME["bg_input"])
-        input_inner.pack(fill=tk.BOTH, padx=20, pady=20)
+        input_inner = tk.Frame(self.input_container, bg=self.config.THEME["bg_input"])
+        input_inner.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)  # 세로 패딩 감소 (20 -> 15)
         
-        # 입력 텍스트 영역
+        # 입력 텍스트 영역 (고정 크기 유지)
         text_input_frame = tk.Frame(input_inner, bg=self.config.THEME["bg_input"])
         text_input_frame.pack(fill=tk.BOTH, expand=True)
+        # text_input_frame.pack_propagate(False)  # 원래 레이아웃이 깨지지 않도록 주석 처리
         
         self.input_text = tk.Text(
             text_input_frame,
@@ -401,7 +649,7 @@ class ChatApplication:
             padx=18,
             pady=12
         )
-        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 18))
+        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 18))  # 원래대로 복구
         
         # 원본 배경색 저장
         self.original_input_bg = self.config.THEME["bg_secondary"]
@@ -428,6 +676,22 @@ class ChatApplication:
             relief=tk.FLAT,
             cursor="hand2"
         )
+        
+        # 이미지 모드 전환 버튼
+        self.image_mode_button = tk.Button(
+            button_container,
+            text="🖼️ 단일",
+            command=self.toggle_image_mode,
+            font=("맑은 고딕", 9),
+            bg="#6366f1",
+            fg="#ffffff",
+            border=0,
+            padx=12, pady=6,
+            activebackground="#4f46e5",
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        self.image_mode_button.pack(fill=tk.X, pady=(0, 4))
         
         # 이미지 선택 버튼 - 모던 스타일
         self.image_button = tk.Button(
@@ -557,7 +821,7 @@ class ChatApplication:
         
         if self.image_handler.has_image():
             self.image_handler.clear_image()
-            self.remove_image_preview()
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
     
     def new_conversation(self):
         """새 대화 시작"""
@@ -630,8 +894,25 @@ class ChatApplication:
             history_for_api = self.conversation_manager.create_history_for_api(conversation_data["history"])
             self.gemini_client.restore_conversation_history(history_for_api)
     
+    def toggle_image_mode(self):
+        """이미지 처리 모드 전환 (단일/다중)"""
+        current_mode = self.image_handler.current_mode
+        
+        if current_mode == "single":
+            # 다중 모드로 전환
+            self.image_handler.set_mode("multiple")
+            self.image_mode_button.config(text="🖼️ 다중", bg="#059669")
+            self.image_button.config(text="🖼️ 이미지 추가" if not self.image_handler.has_image() else "🖼️ 더 추가")
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
+        else:
+            # 단일 모드로 전환
+            self.image_handler.set_mode("single")
+            self.image_mode_button.config(text="🖼️ 단일", bg="#6366f1")
+            self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#f59e0b")
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
+    
     def select_image(self):
-        """이미지 선택"""
+        """이미지 선택 (단일/다중 모드 지원)"""
         filename = filedialog.askopenfilename(
             title="이미지 선택",
             filetypes=[
@@ -645,9 +926,18 @@ class ChatApplication:
         if filename:
             success, error_msg = self.image_handler.load_image(filename)
             if success:
-                preview_photo = self.image_handler.create_preview()
-                if preview_photo:
-                    self.show_image_preview(preview_photo, filename)
+                if self.image_handler.current_mode == "multiple":
+                    # 다중 모드
+                    self.update_attachment_tiles()
+                    count = self.image_handler.get_image_count()
+                    
+                    if count >= self.image_handler.max_images:
+                        self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
+                    else:
+                        self.image_button.config(text="🖼️ 더 추가")
+                else:
+                    # 단일 모드
+                    self.update_attachment_tiles()
                     self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
             else:
                 messagebox.showerror("이미지 오류", error_msg)
@@ -718,12 +1008,386 @@ class ChatApplication:
     def remove_image(self):
         """선택된 이미지 제거"""
         self.image_handler.clear_image()
-        self.remove_image_preview() 
+        self.update_attachment_tiles()  # 타일 업데이트
         self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#FF9800")
     
     def remove_image_preview(self):
         """이미지 미리보기 제거"""
         self.image_preview_frame.pack_forget()
+    
+    def update_attachment_tiles(self):
+        """입력창 위에 체부파일(이미지 + 파일) 타일들 표시"""
+        # 기존 미리보기 제거
+        for widget in self.image_preview_frame.winfo_children():
+            widget.destroy()
+        
+        # 이미지나 파일이 없으면 숨김
+        if not self.image_handler.has_image() and not self.file_handler.has_file():
+            self.image_preview_frame.pack_forget()
+            return
+        
+        # 미리보기 프레임 표시 (입력창 삻전에 강제 배치)
+        self.image_preview_frame.pack(fill=tk.X, padx=15, pady=(5, 0), before=self.input_container)
+        
+        # 타일 컨테이너 (수평 스크롤 가능)
+        tiles_container = tk.Frame(self.image_preview_frame, 
+                                 bg=self.config.THEME["bg_input"])
+        tiles_container.pack(fill=tk.X, pady=5)
+        
+        # 모든 체부파일(이미지 + 파일) 타일 생성
+        tile_index = 0
+        
+        # 이미지 타일 추가
+        if self.image_handler.current_mode == "multiple":
+            images = self.image_handler.images
+            for img_info in images:
+                self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
+                tile_index += 1
+        else:
+            # 단일 모드
+            if self.image_handler.has_image():
+                single_img_info = {
+                    'path': self.image_handler.selected_image_path,
+                    'image': self.image_handler.selected_image,
+                    'filename': os.path.basename(self.image_handler.selected_image_path) if self.image_handler.selected_image_path else "이미지"
+                }
+                self.create_attachment_tile(tiles_container, tile_index, single_img_info, "image")
+                tile_index += 1
+        
+        # 파일 타일 추가
+        if self.file_handler.has_file():
+            file_info = {
+                'path': self.file_handler.selected_file_path,
+                'filename': os.path.basename(self.file_handler.selected_file_path) if self.file_handler.selected_file_path else "파일"
+            }
+            self.create_attachment_tile(tiles_container, tile_index, file_info, "file")
+            tile_index += 1
+    
+    def create_attachment_tile(self, parent, index, item_info, item_type):
+        """호버 기능이 있는 체부파일(이미진/파일) 타일 생성"""
+        # 타일 프레임 (80x80 고정 크기)
+        tile_frame = tk.Frame(parent, 
+                             bg=self.config.THEME["bg_secondary"], 
+                             relief=tk.RAISED, 
+                             bd=2,
+                             width=80, 
+                             height=80,
+                             cursor="hand2")
+        tile_frame.pack(side=tk.LEFT, padx=3, pady=3)
+        tile_frame.pack_propagate(False)  # 크기 고정
+        
+        # 체부파일 타입에 따른 내용 표시
+        if item_type == "image":
+            # 이미지 타일
+            try:
+                preview_image = item_info['image'].copy()
+                preview_image.thumbnail((70, 70), Image.Resampling.LANCZOS)
+                preview_photo = ImageTk.PhotoImage(preview_image)
+                
+                # 이미지 라벨
+                content_label = tk.Label(tile_frame, 
+                                       image=preview_photo, 
+                                       bg=self.config.THEME["bg_secondary"],
+                                       cursor="hand2")
+                content_label.pack(expand=True)
+                content_label.image = preview_photo  # 참조 유지
+                
+            except Exception as e:
+                # 이미지 로드 실패시 텍스트 표시
+                content_label = tk.Label(tile_frame, 
+                                     text="🖼️", 
+                                     bg=self.config.THEME["bg_secondary"],
+                                     fg=self.config.THEME["fg_secondary"],
+                                     font=("맑은 고딕", 20))
+                content_label.pack(expand=True)
+        else:
+            # 파일 타일 - 파일 확장자에 따른 아이콘 표시
+            file_ext = os.path.splitext(item_info['filename'])[1].lower()
+            icon = self.get_file_icon(file_ext)
+            
+            content_label = tk.Label(tile_frame, 
+                                   text=icon, 
+                                   bg=self.config.THEME["bg_secondary"],
+                                   fg=self.config.THEME["fg_accent"],
+                                   font=("맑은 고딕", 24),
+                                   cursor="hand2")
+            content_label.pack(expand=True)
+        
+        # 파일명 표시 (하단) - 모든 타입에 대해 표시
+        filename = item_info['filename']
+        if len(filename) > 10:
+            filename = filename[:7] + "..."
+        
+        name_label = tk.Label(tile_frame, 
+                            text=filename,
+                            bg=self.config.THEME["bg_secondary"],
+                            fg=self.config.THEME["fg_secondary"],
+                            font=("맑은 고딕", 7))
+        name_label.pack(side=tk.BOTTOM)
+        
+        # 호버 이벤트 바인딩
+        def on_enter(event):
+            self.show_attachment_preview(event, item_info, item_type)
+            tile_frame.config(relief=tk.SOLID, bd=3)
+        
+        def on_leave(event):
+            self.hide_hover_preview()
+            tile_frame.config(relief=tk.RAISED, bd=2)
+        
+        def on_click(event):
+            self.remove_attachment_by_index(index, item_type)
+        
+        # 이벤트 바인딩 (모든 위젯에 적용)
+        for widget in [tile_frame, content_label, name_label]:
+            widget.bind("<Enter>", on_enter)
+            widget.bind("<Leave>", on_leave)
+            widget.bind("<Button-1>", on_click)
+    
+    def get_file_icon(self, file_ext):
+        """파일 확장자에 따른 아이콘 반환"""
+        icon_map = {
+            '.pdf': '📄',
+            '.doc': '📝', '.docx': '📝',
+            '.xls': '📊', '.xlsx': '📊',
+            '.ppt': '📊', '.pptx': '📊',
+            '.txt': '📄',
+            '.py': '🐍',
+            '.js': '📜',
+            '.html': '🌐', '.htm': '🌐',
+            '.css': '🎨',
+            '.json': '📊',
+            '.xml': '📜',
+            '.zip': '🗄', '.rar': '🗄', '.7z': '🗄',
+            '.mp4': '🎥', '.avi': '🎥', '.mov': '🎥',
+            '.mp3': '🎵', '.wav': '🎵', '.m4a': '🎵',
+        }
+        return icon_map.get(file_ext, '📁')  # 기본 폴더 아이콘
+    
+    def show_attachment_preview(self, event, item_info, item_type):
+        """마우스 호버시 체부파일 미리보기 표시"""
+        if self.hover_preview_window:
+            self.hide_hover_preview()
+        
+        if item_type == "image":
+            # 이미지 미리보기
+            try:
+                # 큰 미리보기 이미지 생성 (300x300)
+                large_image = item_info['image'].copy()
+                large_image.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                large_photo = ImageTk.PhotoImage(large_image)
+                
+                # 호버 미리보기 창 생성 (Toplevel)
+                self.hover_preview_window = tk.Toplevel(self.root)
+                self.hover_preview_window.wm_overrideredirect(True)  # 타이틀바 없음
+                self.hover_preview_window.configure(bg="#ffffff", relief=tk.SOLID, bd=2)
+                
+                # 이미지 표시
+                preview_label = tk.Label(self.hover_preview_window,
+                                       image=large_photo,
+                                       bg="#ffffff")
+                preview_label.pack(padx=5, pady=5)
+                preview_label.image = large_photo  # 참조 유지
+                
+                # 파일명 표시
+                name_label = tk.Label(self.hover_preview_window,
+                                    text=item_info['filename'],
+                                    bg="#ffffff",
+                                    fg="#333333",
+                                    font=("맑은 고딕", 10, "bold"))
+                name_label.pack(pady=(0, 5))
+                
+            except Exception as e:
+                print(f"이미지 호버 미리보기 오류: {e}")
+        else:
+            # 파일 미리보기 (단순히 파일명만 표시)
+            try:
+                self.hover_preview_window = tk.Toplevel(self.root)
+                self.hover_preview_window.wm_overrideredirect(True)
+                self.hover_preview_window.configure(bg="#f8f9fa", relief=tk.SOLID, bd=1)
+                
+                # 파일명만 표시
+                name_label = tk.Label(self.hover_preview_window,
+                                    text=item_info['filename'],
+                                    bg="#f8f9fa",
+                                    fg="#333333",
+                                    font=("맑은 고딕", 11, "bold"),
+                                    padx=15, pady=8)
+                name_label.pack()
+                
+            except Exception as e:
+                print(f"파일 호버 미리보기 오류: {e}")
+        
+        # 위치 계산 (마우스 근처에 표시)
+        if self.hover_preview_window:
+            x = event.x_root + 10
+            y = event.y_root - 150  # 마우스 위쪽에 표시
+            
+            # 화면 경계 확인 및 조정
+            if y < 50:  # 화면 위쪽 경계
+                y = event.y_root + 30
+            
+            self.hover_preview_window.geometry(f"+{x}+{y}")
+            self.hover_preview_window.lift()
+    
+    def remove_attachment_by_index(self, index, item_type):
+        """인덱스로 체부파일 제거"""
+        if item_type == "image":
+            if self.image_handler.current_mode == "multiple":
+                self.remove_image_by_index(index)
+            else:
+                self.remove_image()
+        else:
+            # 파일 제거
+            self.remove_file()
+    
+    # 기존 show_hover_preview 함수 제거 - show_attachment_preview 사용
+    
+    def hide_hover_preview(self):
+        """호버 미리보기 숨기기"""
+        if self.hover_preview_window:
+            self.hover_preview_window.destroy()
+            self.hover_preview_window = None
+    
+    def update_multiple_image_preview(self):
+        """다중 이미지 미리보기 업데이트"""
+        if self.image_handler.current_mode != "multiple":
+            return
+            
+        # 기존 미리보기 제거
+        for widget in self.image_preview_frame.winfo_children():
+            widget.destroy()
+        
+        if not self.image_handler.has_image():
+            self.image_preview_frame.pack_forget()
+            return
+        
+        # 미리보기 프레임 표시
+        self.image_preview_frame.pack(fill=tk.X, padx=15, pady=(15, 0))
+        
+        # 다중 이미지 컨테이너
+        preview_container = tk.Frame(self.image_preview_frame, 
+                                   bg=self.config.THEME["bg_input"], 
+                                   relief=tk.SOLID, bd=1)
+        preview_container.pack(fill=tk.X, pady=5)
+        
+        # 헤더 정보
+        count = self.image_handler.get_image_count()
+        header_frame = tk.Frame(preview_container, bg=self.config.THEME["bg_input"])
+        header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        
+        header_label = tk.Label(
+            header_frame,
+            text=f"🖼️ 이미지 {count}개 첨부됨 (최대 {self.image_handler.max_images}개)",
+            bg=self.config.THEME["bg_input"],
+            fg=self.config.THEME["fg_primary"],
+            font=self.chat_font
+        )
+        header_label.pack(side=tk.LEFT)
+        
+        # 전체 삭제 버튼
+        clear_all_button = tk.Button(
+            header_frame,
+            text="🗑️ 모두삭제",
+            command=self.remove_all_images,
+            font=("맑은 고딕", 9),
+            bg="#ef4444",
+            fg="#ffffff",
+            border=0,
+            padx=10, pady=4,
+            activebackground="#dc2626",
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        clear_all_button.pack(side=tk.RIGHT)
+        
+        # 이미지 그리드 컨테이너
+        grid_frame = tk.Frame(preview_container, bg=self.config.THEME["bg_input"])
+        grid_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        # 이미지들을 2x2 그리드로 배치
+        for i in range(count):
+            self.create_image_tile(grid_frame, i)
+    
+    def create_image_tile(self, parent, index):
+        """개별 이미지 타일 생성"""
+        row = index // 2
+        col = index % 2
+        
+        # 타일 프레임
+        tile_frame = tk.Frame(parent, bg=self.config.THEME["bg_secondary"], relief=tk.SOLID, bd=1)
+        tile_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        
+        # 그리드 가중치 설정
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_columnconfigure(1, weight=1)
+        
+        # 이미지 미리보기
+        preview_photo = self.image_handler.create_multiple_preview(index, (120, 80))
+        if preview_photo:
+            image_label = tk.Label(tile_frame, image=preview_photo, bg=self.config.THEME["bg_secondary"], cursor="hand2")
+            image_label.image = preview_photo  # 참조 유지
+            image_label.pack(side=tk.LEFT, padx=8, pady=8)
+            
+            # 이미지 클릭으로 큰 미리보기 창 열기
+            image_label.bind("<Button-1>", lambda e, idx=index: self.show_image_detail(idx))
+        
+        # 정보 및 버튼 영역
+        info_frame = tk.Frame(tile_frame, bg=self.config.THEME["bg_secondary"])
+        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8), pady=8)
+        
+        # 파일명
+        filename = self.image_handler.get_short_filename(index)
+        if filename and len(filename) > 20:
+            filename = filename[:17] + "..."
+        
+        filename_label = tk.Label(
+            info_frame,
+            text=filename or f"이미지 {index+1}",
+            bg=self.config.THEME["bg_secondary"],
+            fg=self.config.THEME["fg_primary"],
+            font=("맑은 고딕", 9),
+            anchor="w"
+        )
+        filename_label.pack(fill=tk.X)
+        
+        # 개별 삭제 버튼
+        remove_button = tk.Button(
+            info_frame,
+            text="🗑️ 삭제",
+            command=lambda idx=index: self.remove_image_by_index(idx),
+            font=("맑은 고딕", 8),
+            bg="#f87171",
+            fg="#ffffff",
+            border=0,
+            padx=8, pady=2,
+            activebackground="#ef4444",
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        remove_button.pack(anchor="e", pady=(5, 0))
+    
+    def remove_image_by_index(self, index):
+        """인덱스로 이미지 제거"""
+        if self.image_handler.remove_image_by_index(index):
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
+            
+            # 버튼 상태 업데이트
+            count = self.image_handler.get_image_count()
+            if count == 0:
+                self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+            elif count < self.image_handler.max_images:
+                self.image_button.config(text="🖼️ 더 추가", command=self.select_image, bg="#f59e0b")
+    
+    def remove_all_images(self):
+        """모든 이미지 제거"""
+        self.image_handler.clear_all_images()
+        self.update_attachment_tiles()  # 새로운 타일 시스템 사용
+        self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+    
+    def show_image_detail(self, index):
+        """특정 인덱스의 이미지를 큰 미리보기 창에서 표시"""
+        if self.image_handler.current_mode == "multiple" and 0 <= index < self.image_handler.get_image_count():
+            self.preview_window.show_preview(self.image_handler, index)
     
     def show_file_preview(self, filename):
         """파일 미리보기 표시"""
@@ -773,7 +1437,7 @@ class ChatApplication:
     def remove_file(self):
         """선택된 파일 제거"""
         self.file_handler.clear_file()
-        self.remove_image_preview()  # 같은 프레임 사용
+        self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
         self.file_button.config(text="📄 파일", command=self.select_file, bg="#8b5cf6")
     
     def send_message(self):
@@ -803,18 +1467,27 @@ class ChatApplication:
         image_info = None
         file_info = None
         chat_image_preview = None
+        multiple_images = None
         
         # 이미지 정보
         if self.image_handler.has_image():
             image_info = self.image_handler.get_image_info()
-            chat_image_preview = self.image_handler.create_chat_preview()
+            
+            if self.image_handler.current_mode == "multiple" and self.image_handler.get_image_count() > 1:
+                # 다중 이미지 모드
+                multiple_images = self.image_handler.get_all_chat_previews()
+            else:
+                # 단일 이미지 모드
+                chat_image_preview = self.image_handler.create_chat_preview()
         
         # 파일 정보
         if self.file_handler.has_file():
             file_info = self.file_handler.get_file_info()
         
-        # 둘 다 있으면 이미지 정보를 attachment_info로, 파일은 별도로
-        if image_info and file_info:
+        # 메시지 표시 (다중 이미지 우선)
+        if multiple_images and len(multiple_images) > 1:
+            self.chat_display.display_user_message(user_input, image_info, None, file_info, multiple_images)
+        elif image_info and file_info:
             self.chat_display.display_user_message(user_input, image_info, chat_image_preview, file_info)
         elif image_info:
             self.chat_display.display_user_message(user_input, image_info, chat_image_preview)
@@ -846,10 +1519,11 @@ class ChatApplication:
                 # 메시지 구성
                 message_parts = []
                 
-                # 이미지가 있으면 추가
-                image = self.image_handler.get_image_for_api()
-                if image:
-                    message_parts.append(image)
+                # 이미지 처리 (다중 또는 단일)
+                images = self.image_handler.get_images_for_api()
+                for image in images:
+                    if image:
+                        message_parts.append(image)
                 
                 # 파일이 있으면 추가
                 file_content = self.file_handler.get_file_for_api()
@@ -943,15 +1617,22 @@ class ChatApplication:
         self.stop_button.pack_forget()
         self.send_button.pack(fill=tk.BOTH, expand=True)
         
+        # 미리보기 창 닫기
+        if self.preview_window and self.preview_window.is_open():
+            self.preview_window.close_window()
+        
         # 이미지와 파일 초기화
         if self.image_handler.has_image():
-            self.image_handler.clear_image()
-            self.remove_image_preview()
-            self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#FF9800")
+            self.image_handler.clear_all_images()
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
+            if self.image_handler.current_mode == "multiple":
+                self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+            else:
+                self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#f59e0b")
         
         if self.file_handler.has_file():
             self.file_handler.clear_file()
-            self.remove_image_preview()  # 같은 프레임 사용
+            self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
             self.file_button.config(text="📄 파일", command=self.select_file, bg="#8b5cf6")
         
         self.input_text.focus()
@@ -1090,11 +1771,22 @@ class ChatApplication:
             # 이미지 처리
             success, error_msg = self.image_handler.load_image(file_path)
             if success:
-                preview_photo = self.image_handler.create_preview()
-                if preview_photo:
-                    self.show_image_preview(preview_photo, file_path)
+                # 새로운 타일 기반 미리보기 시스템 사용
+                self.update_attachment_tiles()
+                
+                if self.image_handler.current_mode == "multiple":
+                    # 다중 모드
+                    count = self.image_handler.get_image_count()
+                    
+                    if count >= self.image_handler.max_images:
+                        self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
+                    else:
+                        self.image_button.config(text="🖼️ 더 추가")
+                    messagebox.showinfo("이미지 업로드", f"이미지가 추가되었습니다: {os.path.basename(file_path)} ({count}/{self.image_handler.max_images})")
+                else:
+                    # 단일 모드
                     self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
-                messagebox.showinfo("이미지 업로드", f"이미지가 업로드되었습니다: {os.path.basename(file_path)}")
+                    messagebox.showinfo("이미지 업로드", f"이미지가 업로드되었습니다: {os.path.basename(file_path)}")
             else:
                 messagebox.showerror("이미지 오류", error_msg)
         
@@ -1129,22 +1821,41 @@ class ChatApplication:
                 temp_path = tempfile.mktemp(suffix='.png')
                 img.save(temp_path, 'PNG')
                 
-                # 기존 이미지가 있으면 교체 확인
+                # 기존 이미지가 있으면 모드에 따라 처리
                 if self.image_handler.has_image():
-                    result = messagebox.askyesno(
-                        "이미지 교체", 
-                        "이미 선택된 이미지가 있습니다. 클립보드의 이미지로 교체하시겠습니까?"
-                    )
-                    if not result:
+                    if self.image_handler.current_mode == "single":
+                        result = messagebox.askyesno(
+                            "이미지 교체", 
+                            "이미 선택된 이미지가 있습니다. 클립보드의 이미지로 교체하시겠습니까?"
+                        )
+                        if not result:
+                            os.remove(temp_path)
+                            return "break"
+                    elif self.image_handler.get_image_count() >= self.image_handler.max_images:
+                        messagebox.showwarning(
+                            "이미지 최대 개수",
+                            f"최대 {self.image_handler.max_images}개까지만 추가할 수 있습니다."
+                        )
                         os.remove(temp_path)
                         return "break"
                 
                 # 이미지 로드
                 success, error_msg = self.image_handler.load_image(temp_path)
                 if success:
-                    preview_photo = self.image_handler.create_preview()
-                    if preview_photo:
-                        self.show_image_preview(preview_photo, temp_path)
+                    # 새로운 타일 기반 미리보기 시스템 사용
+                    self.update_attachment_tiles()
+                    
+                    if self.image_handler.current_mode == "multiple":
+                        # 다중 모드
+                        count = self.image_handler.get_image_count()
+                        
+                        if count >= self.image_handler.max_images:
+                            self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
+                        else:
+                            self.image_button.config(text="🖼️ 더 추가")
+                        messagebox.showinfo("이미지 첨부", f"클립보드의 이미지가 추가되었습니다. ({count}/{self.image_handler.max_images})")
+                    else:
+                        # 단일 모드
                         self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
                         messagebox.showinfo("이미지 첨부", "클립보드의 이미지가 성공적으로 첨부되었습니다.")
                 else:

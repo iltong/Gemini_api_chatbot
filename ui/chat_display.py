@@ -208,8 +208,8 @@ class ChatDisplay:
         self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
     
-    def display_user_message(self, message: str, attachment_info: Optional[str] = None, image_preview=None, file_info: Optional[str] = None):
-        """사용자 메시지 표시"""
+    def display_user_message(self, message: str, attachment_info: Optional[str] = None, image_preview=None, file_info: Optional[str] = None, multiple_images: list = None):
+        """사용자 메시지 표시 (다중 이미지 지원)"""
         self.chat_display.config(state=tk.NORMAL)
         
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -220,8 +220,12 @@ class ChatDisplay:
         # 첨부파일 정보 표시
         attachments_shown = False
         
-        # 이미지 첨부 시각적 표시
-        if image_preview:
+        # 다중 이미지 표시 (우선순위)
+        if multiple_images and len(multiple_images) > 1:
+            self.display_multiple_images_in_chat(multiple_images)
+            attachments_shown = True
+        # 단일 이미지 첨부 시각적 표시 (기존 방식)
+        elif image_preview:
             # 이미지를 채팅창에 직접 삽입
             self.chat_display.image_create(tk.END, image=image_preview)
             self.chat_display.insert(tk.END, "\n")
@@ -445,3 +449,51 @@ class ChatDisplay:
                                       background="#1F2937",
                                       font=("Consolas", font_size - 1),
                                       lmargin1=35, lmargin2=35, rmargin=55)
+    
+    def display_multiple_images_in_chat(self, image_previews: list):
+        """채팅창에 다중 이미지 표시"""
+        if not image_previews:
+            return
+        
+        # 이미지 그리드 컨테이너 생성
+        images_frame = tk.Frame(self.chat_display, bg=self.config.THEME["bg_secondary"])
+        
+        # 이미지를 2x2 그리드로 배치
+        for i, preview in enumerate(image_previews[:4]):  # 최대 4개만 표시
+            if preview:
+                row = i // 2
+                col = i % 2
+                
+                # 개별 이미지 프레임
+                img_frame = tk.Frame(images_frame, bg=self.config.THEME["bg_secondary"], 
+                                   relief=tk.SOLID, bd=1)
+                img_frame.grid(row=row, column=col, padx=2, pady=2, sticky="nsew")
+                
+                # 이미지 라벨
+                img_label = tk.Label(img_frame, image=preview, bg=self.config.THEME["bg_secondary"])
+                img_label.pack(padx=4, pady=4)
+                
+                # 이미지 번호
+                num_label = tk.Label(img_frame, text=f"{i+1}", 
+                                   bg=self.config.THEME["bg_secondary"],
+                                   fg=self.config.THEME["fg_accent"],
+                                   font=("맑은 고딕", 8, "bold"))
+                num_label.pack()
+                
+                # 이미지 참조 유지
+                self.image_references.append(preview)
+        
+        # 그리드 가중치 설정
+        images_frame.grid_columnconfigure(0, weight=1)
+        images_frame.grid_columnconfigure(1, weight=1)
+        
+        # 채팅창에 프레임 삽입
+        self.chat_display.window_create(tk.END, window=images_frame)
+        self.chat_display.insert(tk.END, "\n")
+        
+        # 이미지 개수 정보
+        count = len(image_previews)
+        if count > 4:
+            self.chat_display.insert(tk.END, f"📸 이미지 {count}개 (처음 4개만 표시)\n", "image_indicator")
+        else:
+            self.chat_display.insert(tk.END, f"📸 이미지 {count}개\n", "image_indicator")

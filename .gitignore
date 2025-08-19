@@ -47,3 +47,6 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# Development Files
+TODO.md
