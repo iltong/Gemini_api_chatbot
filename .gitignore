@@ -1,0 +1,49 @@
+# API Keys and Secrets
+.env
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Personal Settings
+window_settings.json
+.setup_complete
+
+# User Data (Optional - 개인 대화 기록)
+conversations/
+saved_conversations/
+*.conversation.json
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary Files
+*.tmp
+*.temp
+.cache/

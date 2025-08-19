@@ -1,0 +1,1 @@
+"""Configuration and settings for Gemini Chat Assistant"""
