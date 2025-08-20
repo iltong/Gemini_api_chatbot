@@ -935,12 +935,12 @@ class ChatApplication:
         doc_files = [ext for ext in file_extensions if ext in ['.txt', '.md', '.rst']]
         
         filetypes = [
+            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
             ("이미지 파일", " ".join(f"*{ext}" for ext in image_files)),
             ("코드 파일", " ".join(f"*{ext}" for ext in code_files)),
             ("웹 파일", " ".join(f"*{ext}" for ext in web_files)),
             ("데이터 파일", " ".join(f"*{ext}" for ext in data_files)),
             ("문서 파일", " ".join(f"*{ext}" for ext in doc_files)),
-            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
             ("모든 파일", "*.*")
         ]
         
