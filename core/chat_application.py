@@ -291,6 +291,7 @@ class ChatApplication:
         self.gemini_client = None
         self.chat_display = None
         self.image_handler = ImageHandler()
+        self.image_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
         self.file_handler = FileHandler()
         self.conversation_manager = ConversationManager()
         
@@ -970,7 +971,7 @@ class ChatApplication:
         if filename:
             success, error_msg = self.file_handler.load_file(filename)
             if success:
-                self.show_file_preview(filename)
+                self.update_attachment_tiles()  # 새로운 타일 시스템 사용
                 self.file_button.config(text="🗑️ 삭제", command=self.remove_file, bg="#F44336")
             else:
                 messagebox.showerror("파일 오류", error_msg)
@@ -1037,22 +1038,24 @@ class ChatApplication:
         # 모든 체부파일(이미지 + 파일) 타일 생성
         tile_index = 0
         
-        # 이미지 타일 추가
-        if self.image_handler.current_mode == "multiple":
-            images = self.image_handler.images
-            for img_info in images:
-                self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
-                tile_index += 1
-        else:
-            # 단일 모드
-            if self.image_handler.has_image():
-                single_img_info = {
-                    'path': self.image_handler.selected_image_path,
-                    'image': self.image_handler.selected_image,
-                    'filename': os.path.basename(self.image_handler.selected_image_path) if self.image_handler.selected_image_path else "이미지"
-                }
-                self.create_attachment_tile(tiles_container, tile_index, single_img_info, "image")
-                tile_index += 1
+        # 이미지 타일 추가 (모드에 관계없이 통합 처리)
+        if self.image_handler.has_image():
+            if self.image_handler.current_mode == "multiple":
+                # 다중 모드: 모든 이미지 추가
+                images = self.image_handler.images
+                for img_info in images:
+                    self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
+                    tile_index += 1
+            else:
+                # 단일 모드: 단일 이미지를 다중 형식으로 변환하여 추가
+                if self.image_handler.selected_image:
+                    single_img_info = {
+                        'path': self.image_handler.selected_image_path,
+                        'image': self.image_handler.selected_image,
+                        'filename': os.path.basename(self.image_handler.selected_image_path) if self.image_handler.selected_image_path else "이미지"
+                    }
+                    self.create_attachment_tile(tiles_container, tile_index, single_img_info, "image")
+                    tile_index += 1
         
         # 파일 타일 추가
         if self.file_handler.has_file():
@@ -1390,49 +1393,9 @@ class ChatApplication:
             self.preview_window.show_preview(self.image_handler, index)
     
     def show_file_preview(self, filename):
-        """파일 미리보기 표시"""
-        # 기존 미리보기 제거
-        for widget in self.image_preview_frame.winfo_children():
-            widget.destroy()
-        
-        # 미리보기 프레임 표시
-        self.image_preview_frame.pack(fill=tk.X, padx=15, pady=(15, 0))
-        
-        preview_container = tk.Frame(self.image_preview_frame, 
-                                   bg=self.config.THEME["bg_input"], 
-                                   relief=tk.SOLID, bd=1)
-        preview_container.pack(fill=tk.X, pady=5)
-        
-        # 파일 아이콘과 정보
-        info_frame = tk.Frame(preview_container, bg=self.config.THEME["bg_input"])
-        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=15, pady=10)
-        
-        # 파일 정보 라벨
-        file_info = self.file_handler.get_file_info()
-        info_label = tk.Label(
-            info_frame, 
-            text=f"📄 {file_info}",
-            bg=self.config.THEME["bg_input"], 
-            fg=self.config.THEME["fg_primary"],
-            font=self.chat_font,
-            anchor="w"
-        )
-        info_label.pack(fill=tk.X)
-        
-        # 파일 미리보기 (처음 몇 줄)
-        preview_text = self.file_handler.get_file_preview(10)
-        if preview_text:
-            preview_label = tk.Label(
-                info_frame,
-                text=preview_text[:200] + ("..." if len(preview_text) > 200 else ""),
-                bg=self.config.THEME["bg_input"],
-                fg=self.config.THEME["fg_secondary"],
-                font=("Consolas", 9),
-                anchor="nw",
-                justify=tk.LEFT,
-                wraplength=400
-            )
-            preview_label.pack(fill=tk.X, pady=(5, 0))
+        """파일 미리보기 표시 (더 이상 사용하지 않음 - 타일 시스템으로 대체됨)"""
+        # 이 함수는 타일 시스템으로 대체되었으므로 update_attachment_tiles()를 호출합니다.
+        self.update_attachment_tiles()
     
     def remove_file(self):
         """선택된 파일 제거"""
@@ -1794,7 +1757,7 @@ class ChatApplication:
             # 파일 처리
             success, error_msg = self.file_handler.load_file(file_path)
             if success:
-                self.show_file_preview(file_path)
+                self.update_attachment_tiles()  # 새로운 타일 시스템 사용
                 self.file_button.config(text="🗑️ 삭제", command=self.remove_file, bg="#F44336")
                 messagebox.showinfo("파일 업로드", f"파일이 업로드되었습니다: {os.path.basename(file_path)}")
             else:
