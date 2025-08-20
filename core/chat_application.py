@@ -293,6 +293,9 @@ class ChatApplication:
         self.image_handler = ImageHandler()
         self.image_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
         self.file_handler = FileHandler()
+        
+        # UI 컴포넌트 참조
+        self.attachment_button = None
         self.conversation_manager = ConversationManager()
         
         # 스트리밍 관련
@@ -311,7 +314,7 @@ class ChatApplication:
         self.input_text = None
         self.send_button = None
         self.stop_button = None
-        self.image_button = None
+        self.attachment_button = None
         self.image_preview_frame = None
         
         # 이미지 미리보기 창
@@ -679,52 +682,22 @@ class ChatApplication:
         )
         
         # 이미지 모드 전환 버튼
-        self.image_mode_button = tk.Button(
+        
+        # 통합 파일 선택 버튼 - 이미지와 파일을 자동 구분
+        self.attachment_button = tk.Button(
             button_container,
-            text="🖼️ 단일",
-            command=self.toggle_image_mode,
-            font=("맑은 고딕", 9),
+            text="📎 파일 첨부",
+            command=self.select_attachment,
+            font=self.button_font,
             bg="#6366f1",
             fg="#ffffff",
             border=0,
-            padx=12, pady=6,
+            padx=18, pady=10,
             activebackground="#4f46e5",
             relief=tk.FLAT,
             cursor="hand2"
         )
-        self.image_mode_button.pack(fill=tk.X, pady=(0, 4))
-        
-        # 이미지 선택 버튼 - 모던 스타일
-        self.image_button = tk.Button(
-            button_container,
-            text="🖼️ 이미지",
-            command=self.select_image,
-            font=self.button_font,
-            bg="#f59e0b",
-            fg="#ffffff",
-            border=0,
-            padx=18, pady=10,
-            activebackground="#d97706",
-            relief=tk.FLAT,
-            cursor="hand2"
-        )
-        self.image_button.pack(fill=tk.X, pady=(0, 8))
-        
-        # 파일 선택 버튼 - 모던 스타일
-        self.file_button = tk.Button(
-            button_container,
-            text="📄 파일",
-            command=self.select_file,
-            font=self.button_font,
-            bg="#8b5cf6",
-            fg="#ffffff",
-            border=0,
-            padx=18, pady=10,
-            activebackground="#7c3aed",
-            relief=tk.FLAT,
-            cursor="hand2"
-        )
-        self.file_button.pack(fill=tk.X, pady=(0, 8))
+        self.attachment_button.pack(fill=tk.X, pady=(0, 8))
         
         # 전송 버튼 - 모던 스타일
         self.send_button = tk.Button(
@@ -895,86 +868,16 @@ class ChatApplication:
             history_for_api = self.conversation_manager.create_history_for_api(conversation_data["history"])
             self.gemini_client.restore_conversation_history(history_for_api)
     
-    def toggle_image_mode(self):
-        """이미지 처리 모드 전환 (단일/다중)"""
-        current_mode = self.image_handler.current_mode
-        
-        if current_mode == "single":
-            # 다중 모드로 전환
-            self.image_handler.set_mode("multiple")
-            self.image_mode_button.config(text="🖼️ 다중", bg="#059669")
-            self.image_button.config(text="🖼️ 이미지 추가" if not self.image_handler.has_image() else "🖼️ 더 추가")
-            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
-        else:
-            # 단일 모드로 전환
-            self.image_handler.set_mode("single")
-            self.image_mode_button.config(text="🖼️ 단일", bg="#6366f1")
-            self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#f59e0b")
-            self.update_attachment_tiles()  # 새로운 타일 시스템 사용
     
     def select_image(self):
-        """이미지 선택 (단일/다중 모드 지원)"""
-        filename = filedialog.askopenfilename(
-            title="이미지 선택",
-            filetypes=[
-                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.webp"),
-                ("PNG files", "*.png"),
-                ("JPEG files", "*.jpg *.jpeg"),
-                ("All files", "*.*")
-            ]
-        )
-        
-        if filename:
-            success, error_msg = self.image_handler.load_image(filename)
-            if success:
-                if self.image_handler.current_mode == "multiple":
-                    # 다중 모드
-                    self.update_attachment_tiles()
-                    count = self.image_handler.get_image_count()
-                    
-                    if count >= self.image_handler.max_images:
-                        self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
-                    else:
-                        self.image_button.config(text="🖼️ 더 추가")
-                else:
-                    # 단일 모드
-                    self.update_attachment_tiles()
-                    self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
-            else:
-                messagebox.showerror("이미지 오류", error_msg)
+        """이미지 선택 (더 이상 사용하지 않음 - select_attachment로 대체됨)"""
+        # 통합 파일 선택 함수로 리다이렉트
+        self.select_attachment()
     
     def select_file(self):
-        """파일 선택"""
-        # 지원되는 파일 확장자 목록을 파일 다이얼로그 형식으로 변환
-        supported_exts = self.file_handler.get_supported_extensions_list()
-        
-        # 확장자별로 그룹핑
-        code_files = [ext for ext in supported_exts if ext in ['.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go']]
-        web_files = [ext for ext in supported_exts if ext in ['.html', '.htm', '.css', '.scss', '.sass', '.vue', '.svelte']]
-        data_files = [ext for ext in supported_exts if ext in ['.json', '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg']]
-        doc_files = [ext for ext in supported_exts if ext in ['.txt', '.md', '.rst']]
-        
-        filetypes = [
-            ("코드 파일", " ".join(f"*{ext}" for ext in code_files)),
-            ("웹 파일", " ".join(f"*{ext}" for ext in web_files)),
-            ("데이터 파일", " ".join(f"*{ext}" for ext in data_files)),
-            ("문서 파일", " ".join(f"*{ext}" for ext in doc_files)),
-            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in supported_exts)),
-            ("모든 파일", "*.*")
-        ]
-        
-        filename = filedialog.askopenfilename(
-            title="파일 선택",
-            filetypes=filetypes
-        )
-        
-        if filename:
-            success, error_msg = self.file_handler.load_file(filename)
-            if success:
-                self.update_attachment_tiles()  # 새로운 타일 시스템 사용
-                self.file_button.config(text="🗑️ 삭제", command=self.remove_file, bg="#F44336")
-            else:
-                messagebox.showerror("파일 오류", error_msg)
+        """파일 선택 (더 이상 사용하지 않음 - select_attachment로 대체됨)"""
+        # 통합 파일 선택 함수로 리다이렉트
+        self.select_attachment()
     
     def show_image_preview(self, photo, filename):
         """이미지 미리보기 표시"""
@@ -1007,14 +910,104 @@ class ChatApplication:
         info_label.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.BOTH, expand=True)
     
     def remove_image(self):
-        """선택된 이미지 제거"""
-        self.image_handler.clear_image()
-        self.update_attachment_tiles()  # 타일 업데이트
-        self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#FF9800")
+        """선택된 이미지 제거 (더 이상 사용하지 않음 - remove_all_attachments로 대체됨)"""
+        self.remove_all_attachments()
     
     def remove_image_preview(self):
         """이미지 미리보기 제거"""
         self.image_preview_frame.pack_forget()
+    
+    def select_attachment(self):
+        """통합 파일 선택 - 이미지와 파일을 자동으로 구분하여 처리"""
+        # 지원되는 파일 확장자 목록을 파일 다이얼로그 형식으로 변환
+        image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff']
+        file_extensions = self.file_handler.get_supported_extensions_list()
+        
+        # 모든 지원되는 확장자 조합
+        all_extensions = image_extensions + file_extensions
+        
+        # 확장자별로 그룹핑
+        image_files = [ext for ext in image_extensions]
+        code_files = [ext for ext in file_extensions if ext in ['.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go']]
+        web_files = [ext for ext in file_extensions if ext in ['.html', '.htm', '.css', '.scss', '.sass', '.vue', '.svelte']]
+        data_files = [ext for ext in file_extensions if ext in ['.json', '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg']]
+        doc_files = [ext for ext in file_extensions if ext in ['.txt', '.md', '.rst']]
+        
+        filetypes = [
+            ("이미지 파일", " ".join(f"*{ext}" for ext in image_files)),
+            ("코드 파일", " ".join(f"*{ext}" for ext in code_files)),
+            ("웹 파일", " ".join(f"*{ext}" for ext in web_files)),
+            ("데이터 파일", " ".join(f"*{ext}" for ext in data_files)),
+            ("문서 파일", " ".join(f"*{ext}" for ext in doc_files)),
+            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
+            ("모든 파일", "*.*")
+        ]
+        
+        filenames = filedialog.askopenfilenames(
+            title="파일 첨부 (다중 선택 가능)",
+            filetypes=filetypes
+        )
+        
+        if filenames:
+            for filename in filenames:
+                self.process_selected_file(filename)
+    
+    def process_selected_file(self, file_path):
+        """선택된 파일을 유형에 따라 자동으로 처리"""
+        # 파일 확장자 확인
+        file_ext = os.path.splitext(file_path.lower())[1]
+        image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff']
+        
+        if file_ext in image_extensions:
+            # 이미지 파일 처리
+            success, error_msg = self.image_handler.load_image(file_path)
+            if success:
+                self.update_attachment_tiles()
+                self.update_attachment_button()
+            else:
+                messagebox.showerror("이미지 오류", error_msg)
+        
+        elif self.file_handler.is_supported_file(file_path):
+            # 텍스트/코드 파일 처리
+            success, error_msg = self.file_handler.load_file(file_path)
+            if success:
+                self.update_attachment_tiles()
+                self.update_attachment_button()
+            else:
+                messagebox.showerror("파일 오류", error_msg)
+        
+        else:
+            # 지원하지 않는 파일 형식
+            supported_exts = image_extensions + self.file_handler.get_supported_extensions_list()
+            messagebox.showerror("지원하지 않는 파일", 
+                               f"지원하지 않는 파일 형식입니다.\n\n지원되는 형식:\n{', '.join(supported_exts)}")
+    
+    def update_attachment_button(self):
+        """첨부 파일 상태에 따라 버튼 텍스트와 기능 업데이트"""
+        has_images = self.image_handler.has_image()
+        has_files = self.file_handler.has_file()
+        
+        if has_images or has_files:
+            # 첨부 파일이 있으면 삭제 버튼으로 변경
+            self.attachment_button.config(
+                text="🗑️ 첨부 삭제",
+                command=self.remove_all_attachments,
+                bg="#F44336"
+            )
+        else:
+            # 첨부 파일이 없으면 기본 상태
+            self.attachment_button.config(
+                text="📎 파일 첨부",
+                command=self.select_attachment,
+                bg="#6366f1"
+            )
+    
+    def remove_all_attachments(self):
+        """모든 첨부 파일 제거"""
+        self.image_handler.clear_image()
+        self.file_handler.clear_file()
+        self.update_attachment_tiles()
+        self.update_attachment_button()
     
     def update_attachment_tiles(self):
         """입력창 위에 체부파일(이미지 + 파일) 타일들 표시"""
@@ -1038,24 +1031,13 @@ class ChatApplication:
         # 모든 체부파일(이미지 + 파일) 타일 생성
         tile_index = 0
         
-        # 이미지 타일 추가 (모드에 관계없이 통합 처리)
+        # 이미지 타일 추가 (항상 다중 모드로 처리)
         if self.image_handler.has_image():
-            if self.image_handler.current_mode == "multiple":
-                # 다중 모드: 모든 이미지 추가
-                images = self.image_handler.images
-                for img_info in images:
-                    self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
-                    tile_index += 1
-            else:
-                # 단일 모드: 단일 이미지를 다중 형식으로 변환하여 추가
-                if self.image_handler.selected_image:
-                    single_img_info = {
-                        'path': self.image_handler.selected_image_path,
-                        'image': self.image_handler.selected_image,
-                        'filename': os.path.basename(self.image_handler.selected_image_path) if self.image_handler.selected_image_path else "이미지"
-                    }
-                    self.create_attachment_tile(tiles_container, tile_index, single_img_info, "image")
-                    tile_index += 1
+            # 다중 모드: 모든 이미지 추가
+            images = self.image_handler.images
+            for img_info in images:
+                self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
+                tile_index += 1
         
         # 파일 타일 추가
         if self.file_handler.has_file():
@@ -1377,15 +1359,15 @@ class ChatApplication:
             # 버튼 상태 업데이트
             count = self.image_handler.get_image_count()
             if count == 0:
-                self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+                self.update_attachment_button()
             elif count < self.image_handler.max_images:
-                self.image_button.config(text="🖼️ 더 추가", command=self.select_image, bg="#f59e0b")
+                self.update_attachment_button()
     
     def remove_all_images(self):
         """모든 이미지 제거"""
         self.image_handler.clear_all_images()
         self.update_attachment_tiles()  # 새로운 타일 시스템 사용
-        self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+        self.update_attachment_button()
     
     def show_image_detail(self, index):
         """특정 인덱스의 이미지를 큰 미리보기 창에서 표시"""
@@ -1398,10 +1380,8 @@ class ChatApplication:
         self.update_attachment_tiles()
     
     def remove_file(self):
-        """선택된 파일 제거"""
-        self.file_handler.clear_file()
-        self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
-        self.file_button.config(text="📄 파일", command=self.select_file, bg="#8b5cf6")
+        """선택된 파일 제거 (더 이상 사용하지 않음 - remove_all_attachments로 대체됨)"""
+        self.remove_all_attachments()
     
     def send_message(self):
         """메시지 전송 처리"""
@@ -1589,14 +1569,14 @@ class ChatApplication:
             self.image_handler.clear_all_images()
             self.update_attachment_tiles()  # 새로운 타일 시스템 사용
             if self.image_handler.current_mode == "multiple":
-                self.image_button.config(text="🖼️ 이미지 추가", command=self.select_image, bg="#f59e0b")
+                self.update_attachment_button()
             else:
-                self.image_button.config(text="🖼️ 이미지", command=self.select_image, bg="#f59e0b")
+                self.update_attachment_button()
         
         if self.file_handler.has_file():
             self.file_handler.clear_file()
             self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
-            self.file_button.config(text="📄 파일", command=self.select_file, bg="#8b5cf6")
+            self.update_attachment_button()
         
         self.input_text.focus()
     
@@ -1730,44 +1710,8 @@ class ChatApplication:
         image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
         file_ext = os.path.splitext(file_path.lower())[1]
         
-        if file_ext in image_extensions:
-            # 이미지 처리
-            success, error_msg = self.image_handler.load_image(file_path)
-            if success:
-                # 새로운 타일 기반 미리보기 시스템 사용
-                self.update_attachment_tiles()
-                
-                if self.image_handler.current_mode == "multiple":
-                    # 다중 모드
-                    count = self.image_handler.get_image_count()
-                    
-                    if count >= self.image_handler.max_images:
-                        self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
-                    else:
-                        self.image_button.config(text="🖼️ 더 추가")
-                    messagebox.showinfo("이미지 업로드", f"이미지가 추가되었습니다: {os.path.basename(file_path)} ({count}/{self.image_handler.max_images})")
-                else:
-                    # 단일 모드
-                    self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
-                    messagebox.showinfo("이미지 업로드", f"이미지가 업로드되었습니다: {os.path.basename(file_path)}")
-            else:
-                messagebox.showerror("이미지 오류", error_msg)
-        
-        elif self.file_handler.is_supported_file(file_path):
-            # 파일 처리
-            success, error_msg = self.file_handler.load_file(file_path)
-            if success:
-                self.update_attachment_tiles()  # 새로운 타일 시스템 사용
-                self.file_button.config(text="🗑️ 삭제", command=self.remove_file, bg="#F44336")
-                messagebox.showinfo("파일 업로드", f"파일이 업로드되었습니다: {os.path.basename(file_path)}")
-            else:
-                messagebox.showerror("파일 오류", error_msg)
-        
-        else:
-            # 지원하지 않는 파일 형식
-            supported_exts = list(image_extensions) + self.file_handler.get_supported_extensions_list()
-            messagebox.showerror("지원하지 않는 파일", 
-                               f"지원하지 않는 파일 형식입니다.\n\n지원 형식:\n{', '.join(supported_exts)}")
+        # 새로운 통합 파일 처리 함수 사용
+        self.process_selected_file(file_path)
         
         self.highlight_drop_zone(False)
     
@@ -1813,13 +1757,13 @@ class ChatApplication:
                         count = self.image_handler.get_image_count()
                         
                         if count >= self.image_handler.max_images:
-                            self.image_button.config(text="🖼️ 최대", command=None, bg="#6b7280")
+                            pass  # 최대 개수 도달은 update_attachment_button에서 처리
                         else:
-                            self.image_button.config(text="🖼️ 더 추가")
+                            self.update_attachment_button()
                         messagebox.showinfo("이미지 첨부", f"클립보드의 이미지가 추가되었습니다. ({count}/{self.image_handler.max_images})")
                     else:
                         # 단일 모드
-                        self.image_button.config(text="🗑️ 삭제", command=self.remove_image, bg="#F44336")
+                        self.update_attachment_button()
                         messagebox.showinfo("이미지 첨부", "클립보드의 이미지가 성공적으로 첨부되었습니다.")
                 else:
                     messagebox.showerror("이미지 오류", error_msg)
