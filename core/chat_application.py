@@ -293,6 +293,7 @@ class ChatApplication:
         self.image_handler = ImageHandler()
         self.image_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
         self.file_handler = FileHandler()
+        self.file_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
         
         # UI 컴포넌트 참조
         self.attachment_button = None
@@ -1004,8 +1005,8 @@ class ChatApplication:
     
     def remove_all_attachments(self):
         """모든 첨부 파일 제거"""
-        self.image_handler.clear_image()
-        self.file_handler.clear_file()
+        self.image_handler.clear_all_images()
+        self.file_handler.clear_all_files()
         self.update_attachment_tiles()
         self.update_attachment_button()
     
@@ -1039,14 +1040,22 @@ class ChatApplication:
                 self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
                 tile_index += 1
         
-        # 파일 타일 추가
+        # 파일 타일 추가 (다중 파일 지원)
         if self.file_handler.has_file():
-            file_info = {
-                'path': self.file_handler.selected_file_path,
-                'filename': os.path.basename(self.file_handler.selected_file_path) if self.file_handler.selected_file_path else "파일"
-            }
-            self.create_attachment_tile(tiles_container, tile_index, file_info, "file")
-            tile_index += 1
+            if self.file_handler.current_mode == "multiple":
+                # 다중 모드: 모든 파일 추가
+                files = self.file_handler.files
+                for file_info in files:
+                    self.create_attachment_tile(tiles_container, tile_index, file_info, "file")
+                    tile_index += 1
+            else:
+                # 단일 모드 (하위 호환성)
+                file_info = {
+                    'path': self.file_handler.selected_file_path,
+                    'filename': os.path.basename(self.file_handler.selected_file_path) if self.file_handler.selected_file_path else "파일"
+                }
+                self.create_attachment_tile(tiles_container, tile_index, file_info, "file")
+                tile_index += 1
     
     def create_attachment_tile(self, parent, index, item_info, item_type):
         """호버 기능이 있는 체부파일(이미진/파일) 타일 생성"""
@@ -1363,6 +1372,21 @@ class ChatApplication:
             elif count < self.image_handler.max_images:
                 self.update_attachment_button()
     
+    def remove_attachment_by_index(self, index, item_type):
+        """인덱스로 첨부파일 제거 (이미지 또는 파일)"""
+        if item_type == "image":
+            # 이미지 제거
+            if self.image_handler.remove_image_by_index(index):
+                self.update_attachment_tiles()
+                self.update_attachment_button()
+        elif item_type == "file":
+            # 파일 제거 - 실제 파일 리스트에서의 인덱스 계산
+            image_count = self.image_handler.get_image_count()
+            file_index = index - image_count
+            if self.file_handler.remove_file_by_index(file_index):
+                self.update_attachment_tiles()
+                self.update_attachment_button()
+    
     def remove_all_images(self):
         """모든 이미지 제거"""
         self.image_handler.clear_all_images()
@@ -1423,9 +1447,20 @@ class ChatApplication:
                 # 단일 이미지 모드
                 chat_image_preview = self.image_handler.create_chat_preview()
         
-        # 파일 정보
+        # 파일 정보 (다중 파일 지원)
+        file_info = None
+        multiple_files_info = []
         if self.file_handler.has_file():
-            file_info = self.file_handler.get_file_info()
+            if self.file_handler.current_mode == "multiple" and self.file_handler.get_file_count() > 1:
+                # 다중 파일 모드
+                for i in range(self.file_handler.get_file_count()):
+                    info = self.file_handler.get_file_info_by_index(i)
+                    if info:
+                        multiple_files_info.append(info)
+                file_info = f"파일 {self.file_handler.get_file_count()}개 첨부"
+            else:
+                # 단일 파일 또는 파일 1개
+                file_info = self.file_handler.get_file_info()
         
         # 메시지 표시 (다중 이미지 우선)
         if multiple_images and len(multiple_images) > 1:
@@ -1445,6 +1480,8 @@ class ChatApplication:
             combined_attachment.append(image_info)
         if file_info:
             combined_attachment.append(file_info)
+        if multiple_files_info:
+            combined_attachment.extend(multiple_files_info)
         attachment_log = " | ".join(combined_attachment) if combined_attachment else None
         
         self.conversation_manager.add_to_log("user", user_input, attachment_log, self.gemini_client.current_model_name)
@@ -1468,10 +1505,11 @@ class ChatApplication:
                     if image:
                         message_parts.append(image)
                 
-                # 파일이 있으면 추가
-                file_content = self.file_handler.get_file_for_api()
-                if file_content:
-                    message_parts.append(file_content)
+                # 파일이 있으면 추가 (다중 파일 지원)
+                file_contents = self.file_handler.get_all_files_for_api()
+                for file_content in file_contents:
+                    if file_content:
+                        message_parts.append(file_content)
                 
                 # 텍스트 추가
                 message_parts.append(user_input)
@@ -1574,7 +1612,7 @@ class ChatApplication:
                 self.update_attachment_button()
         
         if self.file_handler.has_file():
-            self.file_handler.clear_file()
+            self.file_handler.clear_all_files()
             self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
             self.update_attachment_button()
         
