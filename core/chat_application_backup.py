@@ -297,7 +297,6 @@ class ChatApplication:
         
         # UI 컴포넌트 참조
         self.attachment_button = None
-        self.params_display_label = None
         self.conversation_manager = ConversationManager()
         
         # 스트리밍 관련
@@ -533,26 +532,6 @@ class ChatApplication:
             font=self.button_font
         )
         self.model_status_label.pack(side=tk.LEFT)
-        
-        # 파라미터 설정값 표시 (작은 글씨)
-        self.params_display_label = tk.Label(
-            model_frame,
-            text=self.get_params_display_text(),
-            bg=self.config.THEME["bg_primary"],
-            fg=self.config.THEME["fg_secondary"],
-            font=("맑은 고딕", 8),  # 작은 글씨
-            justify=tk.LEFT
-        )
-        self.params_display_label.pack(side=tk.LEFT, padx=(15, 0))
-    
-    def get_params_display_text(self):
-        """파라미터 표시용 텍스트 생성"""
-        return f"🌡️ {self.generation_params.temperature} | 🎯 {self.generation_params.top_p} | 🔢 {self.generation_params.top_k} | 📝 {self.generation_params.max_output_tokens}"
-    
-    def update_params_display(self):
-        """파라미터 표시 업데이트"""
-        if hasattr(self, 'params_display_label'):
-            self.params_display_label.config(text=self.get_params_display_text())
     
     def create_menu_buttons(self, parent: tk.Widget):
         """메뉴 버튼들 생성"""
@@ -758,17 +737,6 @@ class ChatApplication:
     def open_settings_dialog(self):
         """설정 대화상자 열기"""
         def on_save(new_params: GenerationParams, new_prompt: str, new_font_settings: FontSettings):
-            # 기존 설정과 비교하여 변경사항 확인
-            params_changed = (
-                self.generation_params.temperature != new_params.temperature or
-                self.generation_params.top_p != new_params.top_p or
-                self.generation_params.top_k != new_params.top_k or
-                self.generation_params.max_output_tokens != new_params.max_output_tokens
-            )
-            
-            prompt_changed = self.gemini_client.system_prompt != new_prompt
-            
-            # 설정 업데이트
             self.generation_params = new_params
             self.gemini_client.set_system_prompt(new_prompt)
             
@@ -776,17 +744,6 @@ class ChatApplication:
             self.config.font_settings = new_font_settings
             self.update_fonts()
             self.update_ui_fonts()
-            
-            # 생성 파라미터나 시스템 프롬프트가 변경된 경우
-            if params_changed or prompt_changed:
-                # 헤더의 파라미터 표시 업데이트
-                self.update_params_display()
-                
-                # 대화 내역 초기화
-                self.clear_conversation()
-                
-                # 설정 변경 알림
-                self.chat_display.display_system_message("⚙️ 고급설정이 변경되어 대화가 초기화되었습니다.")
         
         SettingsDialog(
             self.root, 
@@ -796,7 +753,6 @@ class ChatApplication:
             self.config.font_settings,
             on_save
         )
-    
     
     def change_model(self, event=None):
         """모델 변경 처리"""
@@ -979,12 +935,12 @@ class ChatApplication:
         doc_files = [ext for ext in file_extensions if ext in ['.txt', '.md', '.rst']]
         
         filetypes = [
+            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
             ("이미지 파일", " ".join(f"*{ext}" for ext in image_files)),
             ("코드 파일", " ".join(f"*{ext}" for ext in code_files)),
             ("웹 파일", " ".join(f"*{ext}" for ext in web_files)),
             ("데이터 파일", " ".join(f"*{ext}" for ext in data_files)),
             ("문서 파일", " ".join(f"*{ext}" for ext in doc_files)),
-            ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
             ("모든 파일", "*.*")
         ]
         

@@ -8,6 +8,86 @@ from typing import Dict, Any, Callable, Optional
 
 from config.settings import AppConfig, GenerationParams, FontSettings
 
+class ToolTip:
+    """툴팁 클래스"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+        self.widget.bind("<Motion>", self.on_motion)
+    
+    def on_enter(self, event=None):
+        """마우스가 위젯에 들어올 때"""
+        self.show_tooltip(event)
+    
+    def on_leave(self, event=None):
+        """마우스가 위젯을 떠날 때"""
+        self.hide_tooltip()
+    
+    def on_motion(self, event=None):
+        """마우스가 움직일 때 툴팁 위치 업데이트"""
+        if self.tooltip_window:
+            self.update_tooltip_position(event)
+    
+    def show_tooltip(self, event=None):
+        """툴팁 표시"""
+        if self.tooltip_window:
+            return
+        
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + 25
+        
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.configure(bg="#2d3748", relief="solid", borderwidth=1)
+        
+        label = tk.Label(
+            self.tooltip_window,
+            text=self.text,
+            justify=tk.LEFT,
+            background="#2d3748",
+            foreground="#e2e8f0",
+            font=("맑은 고딕", 9),
+            wraplength=400,
+            padx=8,
+            pady=6
+        )
+        label.pack()
+        
+        self.tooltip_window.geometry(f"+{x}+{y}")
+        
+        # 툴팁이 화면 밖으로 나가지 않도록 조정
+        self.tooltip_window.update_idletasks()
+        tooltip_width = self.tooltip_window.winfo_width()
+        tooltip_height = self.tooltip_window.winfo_height()
+        screen_width = self.tooltip_window.winfo_screenwidth()
+        screen_height = self.tooltip_window.winfo_screenheight()
+        
+        if x + tooltip_width > screen_width:
+            x = screen_width - tooltip_width - 10
+        if y + tooltip_height > screen_height:
+            y = y - tooltip_height - 30
+        
+        self.tooltip_window.geometry(f"+{x}+{y}")
+    
+    def update_tooltip_position(self, event=None):
+        """툴팁 위치 업데이트"""
+        if not self.tooltip_window:
+            return
+        
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + 25
+        self.tooltip_window.geometry(f"+{x}+{y}")
+    
+    def hide_tooltip(self):
+        """툴팁 숨김"""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
 class SettingsDialog:
     """설정 대화상자 클래스"""
     
@@ -73,10 +153,16 @@ class SettingsDialog:
             frame = tk.Frame(param_frame, bg=self.config.THEME["bg_primary"])
             frame.pack(fill=tk.X, padx=10, pady=5)
             
-            tk.Label(frame, text=f"{label_text}:", 
+            # 라벨 생성 및 툴팁 추가
+            label = tk.Label(frame, text=f"{label_text}:", 
                     bg=self.config.THEME["bg_primary"], 
                     fg=self.config.THEME["fg_primary"],
-                    font=("맑은 고딕", 9), width=15, anchor="w").pack(side=tk.LEFT)
+                    font=("맑은 고딕", 9), width=15, anchor="w")
+            label.pack(side=tk.LEFT)
+            
+            # 툴팁 추가 (config에 툴팁 설명이 있는 경우)
+            if hasattr(self.config, 'PARAM_TOOLTIPS') and param in self.config.PARAM_TOOLTIPS:
+                ToolTip(label, self.config.PARAM_TOOLTIPS[param])
             
             if param_type == "int":
                 var = tk.IntVar(value=getattr(self.generation_params, param))
