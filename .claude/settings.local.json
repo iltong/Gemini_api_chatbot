@@ -12,7 +12,8 @@
       "Bash(del test_file.py)",
       "Bash(move:*)",
       "Bash(ren:*)",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(\"venv\\Scripts\\pip.exe\" install opencv-python)"
     ],
     "deny": []
   }

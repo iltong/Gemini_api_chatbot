@@ -30,6 +30,7 @@ from ui.chat_display import ChatDisplay
 from ui.settings_dialog import SettingsDialog
 from utils.image_handler import ImageHandler
 from utils.file_handler import FileHandler
+from utils.video_handler import VideoHandler
 from utils.conversation_manager import ConversationManager
 
 class ImagePreviewWindow:
@@ -293,7 +294,7 @@ class ChatApplication:
         self.image_handler = ImageHandler()
         self.image_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
         self.file_handler = FileHandler()
-        self.file_handler.set_mode("multiple")  # 타일 시스템을 위해 다중 모드 설정
+        self.video_handler = VideoHandler()
         
         # UI 컴포넌트 참조
         self.attachment_button = None
@@ -966,13 +967,15 @@ class ChatApplication:
         """통합 파일 선택 - 이미지와 파일을 자동으로 구분하여 처리"""
         # 지원되는 파일 확장자 목록을 파일 다이얼로그 형식으로 변환
         image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff']
+        video_extensions = self.video_handler.get_supported_extensions_list()
         file_extensions = self.file_handler.get_supported_extensions_list()
         
         # 모든 지원되는 확장자 조합
-        all_extensions = image_extensions + file_extensions
+        all_extensions = image_extensions + video_extensions + file_extensions
         
         # 확장자별로 그룹핑
         image_files = [ext for ext in image_extensions]
+        video_files = [ext for ext in video_extensions]
         code_files = [ext for ext in file_extensions if ext in ['.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go']]
         web_files = [ext for ext in file_extensions if ext in ['.html', '.htm', '.css', '.scss', '.sass', '.vue', '.svelte']]
         data_files = [ext for ext in file_extensions if ext in ['.json', '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg']]
@@ -981,6 +984,7 @@ class ChatApplication:
         filetypes = [
             ("지원되는 모든 파일", " ".join(f"*{ext}" for ext in all_extensions)),
             ("이미지 파일", " ".join(f"*{ext}" for ext in image_files)),
+            ("동영상 파일", " ".join(f"*{ext}" for ext in video_files)),
             ("코드 파일", " ".join(f"*{ext}" for ext in code_files)),
             ("웹 파일", " ".join(f"*{ext}" for ext in web_files)),
             ("데이터 파일", " ".join(f"*{ext}" for ext in data_files)),
@@ -1012,6 +1016,15 @@ class ChatApplication:
             else:
                 messagebox.showerror("이미지 오류", error_msg)
         
+        elif self.video_handler.is_supported_video(file_path):
+            # 동영상 파일 처리
+            success, error_msg = self.video_handler.load_video(file_path)
+            if success:
+                self.update_attachment_tiles()
+                self.update_attachment_button()
+            else:
+                messagebox.showerror("동영상 오류", error_msg)
+        
         elif self.file_handler.is_supported_file(file_path):
             # 텍스트/코드 파일 처리
             success, error_msg = self.file_handler.load_file(file_path)
@@ -1023,16 +1036,17 @@ class ChatApplication:
         
         else:
             # 지원하지 않는 파일 형식
-            supported_exts = image_extensions + self.file_handler.get_supported_extensions_list()
+            supported_exts = image_extensions + self.video_handler.get_supported_extensions_list() + self.file_handler.get_supported_extensions_list()
             messagebox.showerror("지원하지 않는 파일", 
                                f"지원하지 않는 파일 형식입니다.\n\n지원되는 형식:\n{', '.join(supported_exts)}")
     
     def update_attachment_button(self):
         """첨부 파일 상태에 따라 버튼 텍스트와 기능 업데이트"""
         has_images = self.image_handler.has_image()
+        has_videos = self.video_handler.has_video()
         has_files = self.file_handler.has_file()
         
-        if has_images or has_files:
+        if has_images or has_videos or has_files:
             # 첨부 파일이 있으면 삭제 버튼으로 변경
             self.attachment_button.config(
                 text="🗑️ 첨부 삭제",
@@ -1049,8 +1063,9 @@ class ChatApplication:
     
     def remove_all_attachments(self):
         """모든 첨부 파일 제거"""
-        self.image_handler.clear_all_images()
-        self.file_handler.clear_all_files()
+        self.image_handler.clear_image()
+        self.video_handler.clear_video()
+        self.file_handler.clear_file()
         self.update_attachment_tiles()
         self.update_attachment_button()
     
@@ -1060,8 +1075,8 @@ class ChatApplication:
         for widget in self.image_preview_frame.winfo_children():
             widget.destroy()
         
-        # 이미지나 파일이 없으면 숨김
-        if not self.image_handler.has_image() and not self.file_handler.has_file():
+        # 이미지, 동영상, 파일이 모두 없으면 숨김
+        if not self.image_handler.has_image() and not self.video_handler.has_video() and not self.file_handler.has_file():
             self.image_preview_frame.pack_forget()
             return
         
@@ -1084,7 +1099,18 @@ class ChatApplication:
                 self.create_attachment_tile(tiles_container, tile_index, img_info, "image")
                 tile_index += 1
         
-        # 파일 타일 추가 (다중 파일 지원)
+        # 동영상 타일 추가
+        if self.video_handler.has_video():
+            video_info = {
+                'path': self.video_handler.selected_video_path,
+                'image': self.video_handler.thumbnail_image,
+                'filename': self.video_handler.get_short_filename(),
+                'video_info': self.video_handler.video_info
+            }
+            self.create_attachment_tile(tiles_container, tile_index, video_info, "video")
+            tile_index += 1
+        
+        # 파일 타일 추가
         if self.file_handler.has_file():
             if self.file_handler.current_mode == "multiple":
                 # 다중 모드: 모든 파일 추가
@@ -1138,6 +1164,43 @@ class ChatApplication:
                                      fg=self.config.THEME["fg_secondary"],
                                      font=("맑은 고딕", 20))
                 content_label.pack(expand=True)
+        
+        elif item_type == "video":
+            # 동영상 타일
+            try:
+                if item_info['image']:
+                    # 동영상 썸네일 표시
+                    preview_image = item_info['image'].copy()
+                    preview_image.thumbnail((70, 70), Image.Resampling.LANCZOS)
+                    preview_photo = ImageTk.PhotoImage(preview_image)
+                    
+                    # 배경 이미지 라벨
+                    content_label = tk.Label(tile_frame, 
+                                           image=preview_photo, 
+                                           bg=self.config.THEME["bg_secondary"],
+                                           cursor="hand2")
+                    content_label.pack(expand=True)
+                    content_label.image = preview_photo
+                    
+                    # 재생 버튼 오버레이
+                    play_label = tk.Label(content_label, 
+                                        text="▶️", 
+                                        bg=self.config.THEME["bg_secondary"],
+                                        fg="#ffffff",
+                                        font=("맑은 고딕", 16))
+                    play_label.place(relx=0.5, rely=0.5, anchor="center")
+                else:
+                    raise Exception("썸네일 없음")
+                    
+            except Exception as e:
+                # 동영상 썸네일 실패시 아이콘 표시
+                content_label = tk.Label(tile_frame, 
+                                     text="🎬", 
+                                     bg=self.config.THEME["bg_secondary"],
+                                     fg=self.config.THEME["fg_secondary"],
+                                     font=("맑은 고딕", 20))
+                content_label.pack(expand=True)
+        
         else:
             # 파일 타일 - 파일 확장자에 따른 아이콘 표시
             file_ext = os.path.splitext(item_info['filename'])[1].lower()
@@ -1236,6 +1299,28 @@ class ChatApplication:
                 
             except Exception as e:
                 print(f"이미지 호버 미리보기 오류: {e}")
+        
+        elif item_type == "video":
+            # 동영상 미리보기 (썸네일 + 정보)
+            try:
+                self.hover_preview_window = tk.Toplevel(self.root)
+                self.hover_preview_window.wm_overrideredirect(True)
+                self.hover_preview_window.configure(bg="#2d3748", relief=tk.SOLID, bd=2)
+                
+                # 동영상 정보 표시
+                info_text = self.video_handler.get_video_display_info()
+                info_label = tk.Label(self.hover_preview_window,
+                                    text=info_text,
+                                    bg="#2d3748",
+                                    fg="#e2e8f0",
+                                    font=("맑은 고딕", 10),
+                                    justify=tk.LEFT,
+                                    padx=15, pady=10)
+                info_label.pack()
+                
+            except Exception as e:
+                print(f"동영상 호버 미리보기 오류: {e}")
+        
         else:
             # 파일 미리보기 (단순히 파일명만 표시)
             try:
@@ -1274,6 +1359,11 @@ class ChatApplication:
                 self.remove_image_by_index(index)
             else:
                 self.remove_image()
+        elif item_type == "video":
+            # 동영상 제거 (단일 동영상만 지원)
+            self.video_handler.clear_video()
+            self.update_attachment_tiles()
+            self.update_attachment_button()
         else:
             # 파일 제거
             self.remove_file()
@@ -1506,15 +1596,26 @@ class ChatApplication:
                 # 단일 파일 또는 파일 1개
                 file_info = self.file_handler.get_file_info()
         
+        # 동영상 정보 처리
+        video_info = None
+        if self.video_handler.has_video():
+            video_info = self.video_handler.get_video_display_info()
+        
         # 메시지 표시 (다중 이미지 우선)
         if multiple_images and len(multiple_images) > 1:
-            self.chat_display.display_user_message(user_input, image_info, None, file_info, multiple_images)
+            self.chat_display.display_user_message(user_input, image_info, None, file_info, multiple_images, video_info)
         elif image_info and file_info:
-            self.chat_display.display_user_message(user_input, image_info, chat_image_preview, file_info)
+            self.chat_display.display_user_message(user_input, image_info, chat_image_preview, file_info, None, video_info)
+        elif image_info and video_info:
+            self.chat_display.display_user_message(user_input, image_info, chat_image_preview, None, None, video_info)
+        elif file_info and video_info:
+            self.chat_display.display_user_message(user_input, None, None, file_info, None, video_info)
         elif image_info:
             self.chat_display.display_user_message(user_input, image_info, chat_image_preview)
         elif file_info:
             self.chat_display.display_user_message(user_input, None, None, file_info)
+        elif video_info:
+            self.chat_display.display_user_message(user_input, None, None, None, None, video_info)
         else:
             self.chat_display.display_user_message(user_input)
         
@@ -1524,6 +1625,8 @@ class ChatApplication:
             combined_attachment.append(image_info)
         if file_info:
             combined_attachment.append(file_info)
+        if video_info:
+            combined_attachment.append(video_info)
         if multiple_files_info:
             combined_attachment.extend(multiple_files_info)
         attachment_log = " | ".join(combined_attachment) if combined_attachment else None
@@ -1554,6 +1657,13 @@ class ChatApplication:
                 for file_content in file_contents:
                     if file_content:
                         message_parts.append(file_content)
+                
+                # 동영상이 있으면 업로드 후 추가
+                video_path = self.video_handler.get_video_for_api()
+                if video_path:
+                    video_file = self.gemini_client.upload_video_to_gemini(video_path)
+                    if video_file:
+                        message_parts.append(video_file)
                 
                 # 텍스트 추가
                 message_parts.append(user_input)
@@ -1658,6 +1768,12 @@ class ChatApplication:
         if self.file_handler.has_file():
             self.file_handler.clear_all_files()
             self.update_attachment_tiles()  # 새로운 타일 시스템 사용 (같은 프레임 사용)
+            self.update_attachment_button()
+        
+        # 동영상 초기화
+        if self.video_handler.has_video():
+            self.video_handler.clear_video()
+            self.update_attachment_tiles()
             self.update_attachment_button()
         
         self.input_text.focus()

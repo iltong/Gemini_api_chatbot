@@ -116,6 +116,11 @@ class ChatDisplay:
                                       foreground="#8b5cf6", 
                                       font=(self.chat_font[0], self.chat_font[1], "bold"))
         
+        # 동영상 첨부 표시 스타일
+        self.chat_display.tag_configure("video_indicator", 
+                                      foreground="#f59e0b", 
+                                      font=(self.chat_font[0], self.chat_font[1], "bold"))
+        
         # 기타 첨부 표시 스타일
         self.chat_display.tag_configure("attachment_indicator", 
                                       foreground="#6b7280", 
@@ -208,7 +213,7 @@ class ChatDisplay:
         self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
     
-    def display_user_message(self, message: str, attachment_info: Optional[str] = None, image_preview=None, file_info: Optional[str] = None, multiple_images: list = None):
+    def display_user_message(self, message: str, attachment_info: Optional[str] = None, image_preview=None, file_info: Optional[str] = None, multiple_images: list = None, video_info: Optional[str] = None):
         """사용자 메시지 표시 (다중 이미지 지원)"""
         self.chat_display.config(state=tk.NORMAL)
         
@@ -241,6 +246,11 @@ class ChatDisplay:
         # 파일 정보 표시
         if file_info:
             self.chat_display.insert(tk.END, f"📄 {file_info}\n", "file_indicator")
+            attachments_shown = True
+        
+        # 동영상 정보 표시
+        if video_info:
+            self.chat_display.insert(tk.END, f"🎬 {video_info}\n", "video_indicator")
             attachments_shown = True
         
         # 기타 첨부 정보 표시

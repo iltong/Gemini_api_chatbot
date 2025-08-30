@@ -3,7 +3,9 @@ Gemini API 클라이언트 모듈
 """
 
 import google.generativeai as genai
+from google.generativeai.types import File
 import time
+import os
 from typing import Generator, List, Dict, Any, Optional
 from datetime import datetime
 
@@ -55,6 +57,32 @@ class GeminiClient:
         if prompt != self.system_prompt:
             self.system_prompt = prompt
             self.setup_model()
+    
+    def upload_video_to_gemini(self, video_path: str) -> Optional[File]:
+        """동영상을 Gemini File API에 업로드"""
+        try:
+            print(f"동영상 업로드 시작: {video_path}")
+            
+            # 동영상 파일 업로드
+            video_file = genai.upload_file(path=video_path)
+            print(f"업로드 완료: {video_file.name}")
+            
+            # 처리 상태 확인 (필요한 경우)
+            while video_file.state.name == "PROCESSING":
+                print("동영상 처리 중...")
+                time.sleep(2)
+                video_file = genai.get_file(video_file.name)
+            
+            if video_file.state.name == "FAILED":
+                print(f"동영상 처리 실패: {video_file.state.name}")
+                return None
+            
+            print(f"동영상 업로드 및 처리 완료: {video_file.name}")
+            return video_file
+            
+        except Exception as e:
+            print(f"동영상 업로드 오류: {e}")
+            return None
     
     def reset_daily_usage(self):
         """일별 사용량 초기화"""
